@@ -1,6 +1,6 @@
 #!/bin/bash
 
-size=17
+size=17 #generalist + 3 specialists
 clr=0.01
 slr=1.0
 mu=0.0

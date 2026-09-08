@@ -86,32 +86,47 @@ if __name__ == '__main__':
     print(f'  mean rho (all classes): {rho_df["rho"].mean():.3f}')
     print(f'  mean rho (specialist classes only): {rho_df[rho_df.is_specialist_class]["rho"].mean():.3f}')
 
-    # ---- Evaluation 2: Specialist Ranking ----
-    print(f'\n==> Evaluation 2: Specialist Ranking (top-{args.top_k} by q_i(c) vs top-{args.top_k} by E_i(c))')
+    # ---- Evaluation 2: Specialist Ranking (all classes, specialist classes annotated) ----
+    print(f'\n==> Evaluation 2: Ranking (top-{args.top_k} by q_i(c) vs top-{args.top_k} by E_i(c)), all {n_classes} classes')
     rank_rows = []
-    for c in args.specialist_classes:
+    for c in range(n_classes):
         gt_top = set(np.argsort(-E[:, c])[:args.top_k].tolist())
         pred_top = set(np.argsort(-Q[:, c])[:args.top_k].tolist())
         overlap = gt_top & pred_top
         precision = len(overlap) / args.top_k
         recall = len(overlap) / min(args.top_k, len(gt_top))
-        true_specialist_id = [i for i, (r, sc) in role.items() if r == 'specialist' and sc == c][0]
-        specialist_rank_by_q = int(np.argsort(-Q[:, c]).tolist().index(true_specialist_id)) + 1
+        is_spec_class = c in args.specialist_classes
+        true_specialist_id, specialist_rank_by_q = None, None
+        extra = ''
+        if is_spec_class:
+            true_specialist_id = [i for i, (r, sc) in role.items() if r == 'specialist' and sc == c][0]
+            specialist_rank_by_q = int(np.argsort(-Q[:, c]).tolist().index(true_specialist_id)) + 1
+            extra = f'  (true specialist client {true_specialist_id} ranks #{specialist_rank_by_q} by q_i) <- specialist class'
         print(f'  class {c}: GT top-{args.top_k}={sorted(gt_top)}  q_i top-{args.top_k}={sorted(pred_top)}  '
-              f'precision={precision:.2f} recall={recall:.2f}  '
-              f'(true specialist client {true_specialist_id} ranks #{specialist_rank_by_q} by q_i)')
-        rank_rows.append({'class': c, 'precision': precision, 'recall': recall,
+              f'precision={precision:.2f} recall={recall:.2f}{extra}')
+        rank_rows.append({'class': c, 'is_specialist_class': is_spec_class, 'precision': precision, 'recall': recall,
                            'true_specialist_id': true_specialist_id, 'specialist_rank_by_qi': specialist_rank_by_q})
     rank_df = pd.DataFrame(rank_rows)
+    print(f'  mean precision (all classes): {rank_df["precision"].mean():.3f}   '
+          f'mean precision (specialist classes only): {rank_df[rank_df.is_specialist_class]["precision"].mean():.3f}')
 
-    # ---- Evaluation 3: BiasScore ----
-    print(f'\n==> Evaluation 3: True Expertise vs Output Bias (BiasScore_i(c) = q_i(c) - E_i(c))')
+    # ---- Evaluation 3: BiasScore (all classes) ----
+    print(f'\n==> Evaluation 3: True Expertise vs Output Bias (BiasScore_i(c) = q_i(c) - E_i(c)), all {n_classes} classes')
     valid = ~np.isnan(BiasScore)
     large_pos = (BiasScore > args.bias_threshold) & valid
-    print(f'  overall mean BiasScore: {np.nanmean(BiasScore):.3f}')
-    print(f'  fraction of (client, class) pairs with BiasScore > {args.bias_threshold}: '
-          f'{large_pos.sum() / valid.sum():.3f}')
-    specialist_bias = BiasScore[specialist_ids, :][:, args.specialist_classes] if n_specialists > 0 else np.array([])
+    bias_rows = []
+    for c in range(n_classes):
+        col_valid = valid[:, c]
+        col_bias = BiasScore[col_valid, c]
+        frac_large = large_pos[:, c].sum() / col_valid.sum() if col_valid.sum() > 0 else np.nan
+        tag = ' <- specialist class' if c in args.specialist_classes else ''
+        print(f'  class {c}: mean BiasScore={col_bias.mean():.3f}  '
+              f'frac(BiasScore>{args.bias_threshold})={frac_large:.3f}{tag}')
+        bias_rows.append({'class': c, 'mean_bias_score': col_bias.mean(), 'frac_large_positive_bias': frac_large,
+                           'is_specialist_class': c in args.specialist_classes})
+    bias_df = pd.DataFrame(bias_rows)
+    print(f'  overall mean BiasScore (all client-class pairs): {np.nanmean(BiasScore):.3f}')
+    print(f'  overall fraction with BiasScore > {args.bias_threshold}: {large_pos.sum() / valid.sum():.3f}')
     own_class_bias = [BiasScore[i, c] for i, c in zip(specialist_ids, args.specialist_classes)]
     print(f'  specialist BiasScore on their OWN class: {own_class_bias}')
 
@@ -127,6 +142,7 @@ if __name__ == '__main__':
     if args.save_csv:
         rho_df.to_csv(args.save_csv.replace('.csv', '_correlation.csv'), index=False)
         rank_df.to_csv(args.save_csv.replace('.csv', '_ranking.csv'), index=False)
+        bias_df.to_csv(args.save_csv.replace('.csv', '_bias.csv'), index=False)
         np.savetxt(args.save_csv.replace('.csv', '_Q_matrix.csv'), Q, delimiter=',')
         np.savetxt(args.save_csv.replace('.csv', '_E_matrix.csv'), E, delimiter=',')
         print(f'\n==> Saved detailed results alongside {args.save_csv}')
