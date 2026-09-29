@@ -54,6 +54,12 @@ def get_args():
 						type=float,
 						help='fraction of each specialist target class left for generalists to dirichlet-split; '
 							 'the rest is reserved for the specialist, creating a genuine (not random) blind spot')
+	parser.add_argument('--generalist_split',
+						default='dirichlet',
+						type=str,
+						choices=['dirichlet', 'equal'],
+						help='how generalists split their residual pool in specialist_mix: dirichlet (skewed, '
+							 'can accidentally over-expose a generalist to one class) or equal (balanced per class)')
 	parser.add_argument('--dataset',
 						default='CIFAR10',
 						type=str,
@@ -91,6 +97,10 @@ def get_args():
 						type=bool,
 						default=True,
 						help='apply data augmentation during training')
+	parser.add_argument('--img_size',
+						default=224,
+						type=int,
+						help='input resolution used by the CIFAR10 loader (224 for ViT_B32, 32 for ResNet8)')
 	
 	# training configuration
 	parser.add_argument('--model', 

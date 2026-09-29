@@ -26,16 +26,17 @@ class CIFAR10(Dataset):
 
     def load_trainset(self):
         logging.info('==> load train data')
+        img_size = getattr(self.args, 'img_size', 224)     # 224 keeps the original ViT behaviour
         if self.args.apply_augmentation:
             transform_train = transforms.Compose([
-                transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
+                transforms.RandomResizedCrop(img_size, scale=(0.8, 1.0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ])
         else:
             transform_train = transforms.Compose([
-                transforms.Resize(224),
+                transforms.Resize(img_size),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ])
@@ -61,7 +62,8 @@ class CIFAR10(Dataset):
                                         n_specialists=getattr(self.args, 'n_specialists', 0), \
                                         specialist_classes=getattr(self.args, 'specialist_classes', None), \
                                         specialist_purity=getattr(self.args, 'specialist_purity', 0.85), \
-                                        generalist_access_ratio=getattr(self.args, 'generalist_access_ratio', 0.15))
+                                        generalist_access_ratio=getattr(self.args, 'generalist_access_ratio', 0.15), \
+                                        generalist_split=getattr(self.args, 'generalist_split', 'dirichlet'))
         self.num_samples = self.partition.ratio # returns counts intead of ratios
 
         self.proxyset = []
@@ -72,7 +74,7 @@ class CIFAR10(Dataset):
     def load_testset(self):
         logging.info('==> load test data')
         transform_test = transforms.Compose([
-            transforms.Resize(224),
+            transforms.Resize(getattr(self.args, 'img_size', 224)),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])

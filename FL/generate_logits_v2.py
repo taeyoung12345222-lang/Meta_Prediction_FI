@@ -58,6 +58,15 @@ parser.add_argument('--generalist_access_ratio',
                     default=0.15,
                     type=float,
                     help='fraction of each specialist target class left for generalists to dirichlet-split')
+parser.add_argument('--img_size',
+                    default=224,
+                    type=int,
+                    help='input resolution used by the CIFAR10 loader (224 for ViT_B32, 32 for ResNet8)')
+parser.add_argument('--generalist_split',
+                    default='dirichlet',
+                    type=str,
+                    choices=['dirichlet', 'equal'],
+                    help='how generalists split their residual pool in specialist_mix (must match local_training.sh)')
 parser.add_argument('--seed',
                     default=90,
                     type=int,
@@ -143,7 +152,10 @@ def evaluate(model, data_loader):
 
 class DummyArgs:
     def __init__(self, seed, datapath, alpha, dataset, proxy_ratio, batch_size, n_classes_per_client, partition_method, gpu, \
-                 n_specialists=0, specialist_classes=None, specialist_purity=0.85, generalist_access_ratio=0.15):
+                 n_specialists=0, specialist_classes=None, specialist_purity=0.85, generalist_access_ratio=0.15,
+                 img_size=224, generalist_split='dirichlet'):
+        self.img_size = img_size
+        self.generalist_split = generalist_split
         self.seed = seed
         self.datapath = datapath
         self.alpha=alpha
@@ -180,7 +192,8 @@ if __name__ == '__main__':
     
     dataset_args = DummyArgs(args.seed, args.datapath, args.alpha, args.dataset, args.proxy_ratio, \
                              args.batch_size, args.n_classes_per_client, args.partition_method, args.gpu, \
-                             args.n_specialists, args.specialist_classes, args.specialist_purity, args.generalist_access_ratio)
+                             args.n_specialists, args.specialist_classes, args.specialist_purity, args.generalist_access_ratio,
+                             args.img_size, args.generalist_split)
     is_nlp = args.dataset in ['AG_News']
 
     # load train and test sets if CIFAR10

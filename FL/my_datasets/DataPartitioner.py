@@ -30,7 +30,8 @@ class DataPartitioner(object):
     """ Partitions a dataset into different chuncks. """
     def __init__(self, data, sizes=[0.7, 0.2, 0.1], seed=1234, isNonIID=False, alpha=0, num_classes=10, \
                  dataset=None, proxyset=False, proxy_ratio=0.1, n_classes_per_client=2, partition_method='dirichlet', is_nlp=False, \
-                 n_specialists=0, specialist_classes=None, specialist_purity=0.85, generalist_access_ratio=0.15):
+                 n_specialists=0, specialist_classes=None, specialist_purity=0.85, generalist_access_ratio=0.15, \
+                 generalist_split='dirichlet'):
         self.data = data
         self.dataset = dataset
         self.num_classes = num_classes
@@ -46,7 +47,8 @@ class DataPartitioner(object):
                 self.partitions, self.ratio = self.__getShardedData__(data, sizes, self.rng, n_classes_per_client, is_nlp=is_nlp)
             elif partition_method == 'specialist_mix':
                 self.partitions, self.ratio = self.__getSpecialistMixData__(data, sizes, self.rng, alpha, n_specialists, \
-                                                specialist_classes, specialist_purity, generalist_access_ratio, is_nlp=is_nlp)
+                                                specialist_classes, specialist_purity, generalist_access_ratio, is_nlp=is_nlp, \
+                                                generalist_split=generalist_split)
         else:
             self.partitions = [] 
             data_len = len(data) 
@@ -147,11 +149,18 @@ class DataPartitioner(object):
         return idx_batch, weights
     
     def __getSpecialistMixData__(self, data, psizes, rng, alpha, n_specialists, specialist_classes, \
-                                  specialist_purity, generalist_access_ratio, is_nlp=False):
+                                  specialist_purity, generalist_access_ratio, is_nlp=False, generalist_split='dirichlet'):
         """ Splits clients into n_specialists 'specialist' clients (each dominated by one target
         class, drawn from a pool reserved ahead of time) plus generalist clients (the rest),
-        who dirichlet-partition what's left -- which is deliberately scarce on the specialist
+        who split what's left -- which is deliberately scarce on the specialist
         target classes, so the generalists have a genuine blind spot there instead of a random one.
+
+        generalist_split='dirichlet' (default): generalists split the residual pool unevenly via
+        Dirichlet(alpha), so a generalist can randomly end up over-represented in some class purely
+        by chance (this is what earlier created "biased generalists" that mimic real specialists).
+        generalist_split='equal': each class's residual is cut into n_generalists equal-sized chunks,
+        so no generalist is randomly over- or under-exposed to any class relative to the others --
+        isolates genuine specialization (from specialist_purity) from accidental data skew.
 
         Client ids [0, n_nets - n_specialists) are generalists; the last n_specialists ids are
         specialists, each assigned to specialist_classes[i] in order. """
@@ -225,24 +234,32 @@ class DataPartitioner(object):
             rng.shuffle(client_idx)
             net_dataidx_map[client_id] = client_idx.tolist()
 
-        # dirichlet-partition what's left (scarce on specialist_classes, ~full elsewhere)
-        # across the generalists, following the same balancing logic as __getDirichletData__
-        min_size = 0
-        idx_batch = [[] for _ in range(n_generalists)]
-        while min_size < K:
+        # split what's left (scarce on specialist_classes, ~full elsewhere) across the generalists
+        if generalist_split == 'equal':
             idx_batch = [[] for _ in range(n_generalists)]
             for k in range(K):
                 idx_k = class_pool[k].copy()
                 rng.shuffle(idx_k)
-                proportions = rng.dirichlet(np.repeat(alpha, n_generalists))
-                proportions = np.array([p * (len(idx_j) < N / n_nets) for p, idx_j in zip(proportions, idx_batch)])
-                if proportions.sum() == 0:
-                    proportions = np.ones(n_generalists) / n_generalists
-                else:
-                    proportions = proportions / proportions.sum()
-                proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
-                idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))]
-            min_size = min([len(idx_j) for idx_j in idx_batch])
+                chunks = np.array_split(idx_k, n_generalists)  # near-equal sizes, no randomness in size
+                idx_batch = [idx_j + chunk.tolist() for idx_j, chunk in zip(idx_batch, chunks)]
+        else:
+            # dirichlet-partition, following the same balancing logic as __getDirichletData__
+            min_size = 0
+            idx_batch = [[] for _ in range(n_generalists)]
+            while min_size < K:
+                idx_batch = [[] for _ in range(n_generalists)]
+                for k in range(K):
+                    idx_k = class_pool[k].copy()
+                    rng.shuffle(idx_k)
+                    proportions = rng.dirichlet(np.repeat(alpha, n_generalists))
+                    proportions = np.array([p * (len(idx_j) < N / n_nets) for p, idx_j in zip(proportions, idx_batch)])
+                    if proportions.sum() == 0:
+                        proportions = np.ones(n_generalists) / n_generalists
+                    else:
+                        proportions = proportions / proportions.sum()
+                    proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
+                    idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))]
+                min_size = min([len(idx_j) for idx_j in idx_batch])
 
         for j in range(n_generalists):
             rng.shuffle(idx_batch[j])
