@@ -10,3 +10,4 @@ analysis_*.py, evaluate_*.py)는 지금처럼 저장소 루트에 그대로 둔�
 generalist를 균등분할하고 ResNet-8을 scratch로 학습시키는 실험 계열.
 - `run_experiment.sh <n_generalists> <purity> [seed]` — 학습→로짓 생성→전체 지표 추출까지 한 번에 실행
 - `logs_2026-09-29/` — 지금까지 완료한 5개 세팅(seed 90 purity 0.85/0.65/0.5, seed 91/92 purity 0.85)의 로그·표
+- **세부 하이퍼파라미터·지표 설명은 `evensplit_resnet8/README.md` 참고**
